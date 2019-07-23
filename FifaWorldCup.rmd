@@ -1,0 +1,200 @@
+---
+title: "FIFA World Cup 2018 Stats"
+runtime: shiny
+output:
+   flexdashboard::flex_dashboard:
+     vertical_layout: fill
+---
+
+
+Visualization {data-orientation=columns}
+=====================================
+
+```{r global, include=FALSE}
+library(flexdashboard)
+library(plotly)
+library(rvest)
+library(stringr)
+library(purrr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+options(shiny.sanitize.errors = FALSE)
+
+# Scrapping the tables
+url<- read_html("https://www.mykhel.com/football/fifa-world-cup-2018-team-stats-l4/") 
+
+tables<- html_nodes(url,'table') %>% html_table()
+tables <- tables[1:8]
+
+
+# Joining the tables
+teams<-tables %>% reduce(left_join, by = "Team")
+
+
+# Removing the % sign
+teams2 <- teams %>% mutate('Pass compleated' = as.numeric( str_remove_all(`PC (%)`,"%")),
+                           `Average Ball Possession` = as.numeric( str_remove_all(`Average Ball Possession`,"%")),
+                           Matches = Matches.y,
+                           `Goals Conceded` = `Goals Conceded.y`)
+
+# reomving doublicated Variables
+teams2 <- teams2 %>% select(-starts_with("Matches."),
+                            -starts_with("Goals Conceded."),
+                            -`PC (%)`,
+                            -`Group Name`)
+Teams<- unique(teams2$Team)
+
+
+
+```
+
+Column {data-width=200 .sidebar}
+-----------------------------------------------------------------------
+
+```{r}
+# choose the team here
+selectInput("Var3", "Choose a country to highlight",
+            Teams,
+            selected =Teams[10] )
+
+# choose the variable 1 here
+selectInput("Var","Choose variable to compare between countries:" , 
+                  colnames(teams2),
+                  selected = colnames(teams2)[31])
+# choose the variable 2 here
+selectInput("Var2", "Choose a sccandry variable to compare with the first variable:",
+            colnames(teams2),
+            selected = colnames(teams2)[32])
+
+
+```
+ Source: mykhel.com
+ 
+Link to [Data source](https://www.mykhel.com/football/fifa-world-cup-2018-team-stats-l4/)
+
+Link to [Artical](http://the42.ie/4290005)
+
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+### Overall Performance
+
+```{r}
+
+# Producing the main plot
+ renderPlotly({
+   
+teams3<-teams2 %>%
+  mutate(highlight = ifelse(Team == input$Var3,input$Var3,"Average Value"),
+         `Passes Completed (PC)` = `Passes Completed (PC)`/100,
+         `Passes Attempted (PA)` = `Passes Attempted (PA)`/100,
+         `Recoveries` = Recoveries/100) %>%
+  group_by(highlight) %>%
+  summarise_all(.funs = mean) %>%
+  select(-`Pass compleated`) %>% 
+  gather(key = Variable, value = value,3:37) %>%
+  arrange(desc(value))
+# First plot
+p1 <- teams3 %>%  ggplot(aes(x= reorder(Variable, value), y= value, fill = highlight)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme(title = element_text(paste(input$Var3,"Performance Compared to\n average values in the world cup")))+
+  xlab("Variable") +
+  coord_flip() +
+  theme_minimal()
+
+# Build Interactivety with plotly 
+plotly_build(p1)
+     
+})
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Team Position Amoung All Teams
+
+```{r}
+# Producing the Secandry plot
+#  renderPlotly({
+# teams2 %>% mutate(highlight = ifelse(Team == input$Var3,T,F)) %>% 
+#   plot_ly(y = ~Team, x= ~get(input$Var),
+#           type = 'bar', text = ~get(input$Var),
+#           color = ~highlight, orientation = 'h') %>%
+#   layout(title = paste0(input$Var3,"`s Position in Terms of ",input$Var),
+#          xaxis = list(
+#            title = input$Var),
+#          yaxis = list(
+#            title = "Team",
+#            categoryorder = "category descending",
+#            categoryarray =  ~Team),
+#          showlegend  = FALSE
+#          )
+#   }) 
+
+renderPlotly({
+  teams2 %>% mutate(highlight = ifelse(Team == input$Var3,T,F)) %>% 
+    ggplot(aes(x = reorder(Team, get(input$Var)), y=  get(input$Var), fill = highlight)) +
+    geom_bar(stat = "identity") +
+    theme(title = element_text(paste0(input$Var3,"`s Position in Terms of ",input$Var)),
+          legend.position="none") +
+    xlab(input$Var) +
+    ylab("Team") +
+    guides(fill=FALSE) +
+    coord_flip() +
+    theme_minimal()
+}) 
+
+
+```
+
+### Seeking for Correlationship Between Variables
+
+```{r}
+# Producing the Secandry plot
+
+ renderPlotly({
+   teams2 %>% mutate(highlight = ifelse(Team == input$Var3,F,T)) %>% 
+  plot_ly(x =~get(input$Var2), y =~get(input$Var),
+          color = ~highlight, type = "scatter",hoverinfo = 'text',
+        text = ~paste('</br>Team: ', Team,
+                      paste("</br>",input$Var2,":"), get(input$Var2),
+                      paste("</br>",input$Var,":"), get(input$Var))) %>% 
+     add_lines(y = ~fitted(loess(get(input$Var) ~ get(input$Var2))),
+            line = list(color = '#07A4B5'),
+            name = "Line", showlegend = TRUE) %>% 
+     layout(title = paste('Is there A Relationship\n Between',input$Var,'And',input$Var2,'?'),
+         xaxis = list(
+           title = input$Var2),
+         yaxis = list(
+           title = input$Var),
+         showlegend  = FALSE
+         )
+
+  }) 
+
+
+
+
+```
+
+About the Dashboard
+=====================================
+
+ Article link
+
+- AFP (2018, October 16). France defied poor stats to win 2018 World Cup, says Fifa report *the42*. Retrieved from  
+http://the42.ie/4290005
+
+ Data Source
+
+- mykhel.COM  (2018). FIFA World Cup 2018 Team Stats, *mykhel*. Available online at: https://www.mykhel.com/football/fifa-world-cup-2018-team-stats-l4/.
+
+ Visualization URL
+
+https://naif-alsader.shinyapps.io/Assignment3/
+
+
+
