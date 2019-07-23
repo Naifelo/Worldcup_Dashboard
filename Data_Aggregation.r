@@ -106,7 +106,7 @@ all_data %>% View()
   
   
 all_data %>%
-  mutate(var = stringr::str_c(key, value)) %>%
+  mutate(var = stringr::str_c(key, value,sep = "_")) %>%
   select(-key,-value) %>%
   saveRDS("data/all_data.rds")
 
